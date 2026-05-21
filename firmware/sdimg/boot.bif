@@ -1,0 +1,1 @@
+img : {[bootloader] build_sdimg/fsbl.elf build_sdimg/system_top.bit build_sdimg/u-boot.elf}
