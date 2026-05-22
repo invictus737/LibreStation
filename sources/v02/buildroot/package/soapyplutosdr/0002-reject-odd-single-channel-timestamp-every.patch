@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: LibreSDR Timestamp Build <root@localhost>
+Date: Thu, 21 May 2026 12:30:00 +0300
+Subject: [PATCH] timestamp: reject odd single-channel timestamp cadence
+
+For one complex I/Q channel the 64-bit DMA bus carries two complex
+samples per packed word. The FPGA timestamp block expects
+timestamp_every in packed-word units, so odd complex-sample cadences
+cannot be represented without changing host buffer sizing as well.
+---
+ PlutoSDR_TimestampEvery.hpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/PlutoSDR_TimestampEvery.hpp b/PlutoSDR_TimestampEvery.hpp
+--- a/PlutoSDR_TimestampEvery.hpp
++++ b/PlutoSDR_TimestampEvery.hpp
+@@ -21,6 +21,11 @@ namespace SoapyPlutoSDR_TimestampEvery
+         // in each 64-bit value. We do not need to divide the requested timestamp value.
+         if (channel_count == 2)
+         {
++            if ((value & 1U) != 0U)
++            {
++                SoapySDR_logf(SOAPY_SDR_ERROR, "timestamp_every must be even for one complex channel");
++                throw std::runtime_error("timestamp_every must be even for one complex channel");
++            }
+             value /= 2;
+         }
+ 
+-- 
+2.39.5
+

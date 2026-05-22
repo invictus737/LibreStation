@@ -1,0 +1,22 @@
+config BR2_PACKAGE_SOAPYSDR
+	bool "soapysdr"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	help
+	  Vendor-neutral SDR support library and runtime module loader.
+
+	  This package is required by tetra-bluestation through the
+	  rust-soapysdr bindings, and by SoapyPlutoSDR.
+
+if BR2_PACKAGE_SOAPYSDR
+
+config BR2_PACKAGE_SOAPYSDR_UTIL
+	bool "SoapySDRUtil"
+	default y
+	help
+	  Install the SoapySDRUtil diagnostic utility.
+
+endif
+
+comment "soapysdr needs a toolchain with C++ and threads"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS

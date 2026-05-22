@@ -1,0 +1,179 @@
+diff --git a/Makefile b/Makefile
+index 0dc9c4b..dc26c82 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,5 +1,7 @@
+ 
+ VIVADO_VERSION ?= 2022.2
++OVERCLOCK_CPU_MULT ?= 40
++OVERCLOCK_DDR_MULT ?= 25
+ 
+ # Use Buildroot External Linaro GCC 7.3-2018.05 arm-linux-gnueabihf Toolchain
+ CROSS_COMPILE = arm-linux-gnueabihf-
+@@ -10,11 +12,11 @@ NCORES = $(shell grep -c ^processor /proc/cpuinfo)
+ VIVADO_SETTINGS ?= /opt/Xilinx/Vivado/$(VIVADO_VERSION)/settings64.sh
+ VSUBDIRS = hdl buildroot linux u-boot-xlnx
+ 
+-VERSION=$(shell git describe --abbrev=4 --dirty --always --tags)
++VERSION=$(shell git describe --abbrev=4 --always --tags)
+ LATEST_TAG=$(shell git describe --abbrev=0 --tags)
+-UBOOT_VERSION=$(shell echo -n "PlutoSDR " && cd u-boot-xlnx && git describe --abbrev=0 --dirty --always --tags)
++UBOOT_VERSION=LibreStation by YO3TCO LibreSDR v0.2
+ HAVE_VIVADO= $(shell bash -c "source $(VIVADO_SETTINGS) > /dev/null 2>&1 && vivado -version > /dev/null 2>&1 && echo 1 || echo 0")
+-XSA_URL ?= http://github.com/analogdevicesinc/plutosdr-fw/releases/download/${LATEST_TAG}/system_top.xsa
++XSA_URL ?=
+ 
+ ifeq (1, ${HAVE_VIVADO})
+ 	VIVADO_INSTALL= $(shell bash -c "source $(VIVADO_SETTINGS) > /dev/null 2>&1 && vivado -version | head -1 | awk '{print $2}'")
+@@ -27,8 +29,8 @@ $(error "      3] export VIVADO_VERSION=v20xx.x")
+ 	endif
+ endif
+ 
+-TARGET ?= pluto
+-SUPPORTED_TARGETS:=pluto sidekiqz2
++TARGET ?= libre
++SUPPORTED_TARGETS:=pluto sidekiqz2 libre
+ 
+ # Include target specific constants
+ include scripts/$(TARGET).mk
+@@ -48,7 +50,7 @@ endif
+ 
+ ifeq ($(findstring $(TARGET),$(SUPPORTED_TARGETS)),)
+ all:
+-	@echo "Invalid `TARGET variable ; valid values are: pluto, sidekiqz2" &&
++	@echo "Invalid `TARGET variable ; valid values are: pluto, sidekiqz2, libre" &&
+ 	exit 1
+ else
+ all: clean-build $(TARGETS) zip-all legal-info
+@@ -60,7 +62,7 @@ TARGET_DTS_FILES:=$(foreach dts,$(TARGET_DTS_FILES),build/$(dts))
+ 
+ TOOLCHAIN:
+ 	make -C buildroot ARCH=arm zynq_$(TARGET)_defconfig
+-	make -C buildroot toolchain
++	$(MAKE) -C buildroot -j $(NCORES) toolchain
+ 
+ build:
+ 	mkdir -p $@
+@@ -73,7 +75,7 @@ build:
+ 
+ u-boot-xlnx/u-boot u-boot-xlnx/tools/mkimage: TOOLCHAIN
+ 	$(TOOLS_PATH) make -C u-boot-xlnx ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) zynq_$(TARGET)_defconfig
+-	$(TOOLS_PATH) make -C u-boot-xlnx ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) UBOOTVERSION="$(UBOOT_VERSION)"
++	$(TOOLS_PATH) make -C u-boot-xlnx ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) KBUILD_BUILD_USER=chris KBUILD_BUILD_HOST=YO3TCO UBOOTVERSION="$(UBOOT_VERSION)"
+ 
+ .PHONY: u-boot-xlnx/u-boot
+ 
+@@ -90,13 +92,16 @@ build/uboot-env.bin: build/uboot-env.txt
+ 
+ linux/arch/arm/boot/zImage: TOOLCHAIN
+ 	$(TOOLS_PATH) make -C linux ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) zynq_$(TARGET)_defconfig
+-	$(TOOLS_PATH) make -C linux -j $(NCORES) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) zImage UIMAGE_LOADADDR=0x8000
++	$(TOOLS_PATH) make -C linux -j $(NCORES) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) KBUILD_BUILD_USER=chris KBUILD_BUILD_HOST=YO3TCO zImage UIMAGE_LOADADDR=0x8000
++	$(TOOLS_PATH) make -C linux -j $(NCORES) ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) KBUILD_BUILD_USER=chris KBUILD_BUILD_HOST=YO3TCO uImage UIMAGE_LOADADDR=0x8000
+ 
+ .PHONY: linux/arch/arm/boot/zImage
+-
++.PHONY: linux/arch/arm/boot/uImage
+ 
+ build/zImage: linux/arch/arm/boot/zImage | build
+ 	cp $< $@
++build/uImage: linux/arch/arm/boot/uImage  | build
++	cp $< $@
+ 
+ ### Device Tree ###
+ 
+@@ -110,16 +115,16 @@ build/%.dtb: linux/arch/arm/boot/dts/%.dtb | build
+ 
+ buildroot/output/images/rootfs.cpio.gz:
+ 	@echo device-fw $(VERSION)> $(CURDIR)/buildroot/board/$(TARGET)/VERSIONS
+-	@$(foreach dir,$(VSUBDIRS),echo $(dir) $(shell cd $(dir) && git describe --abbrev=4 --dirty --always --tags) >> $(CURDIR)/buildroot/board/$(TARGET)/VERSIONS;)
++	@$(foreach dir,$(VSUBDIRS),echo $(dir) $(shell cd $(dir) && git describe --abbrev=4 --always --tags) >> $(CURDIR)/buildroot/board/$(TARGET)/VERSIONS;)
+ 	make -C buildroot ARCH=arm zynq_$(TARGET)_defconfig
+ 
+ ifneq (1, ${SKIP_LEGAL})
+-	make -C buildroot legal-info
+-	scripts/legal_info_html.sh "$(COMPLETE_NAME)" "$(CURDIR)/buildroot/board/$(TARGET)/VERSIONS"
+-	cp build/LICENSE.html buildroot/board/$(TARGET)/msd/LICENSE.html
++	# skipped for firmware build speed: make -C buildroot legal-info
++	# skipped for firmware build speed: scripts/legal_info_html.sh "$(COMPLETE_NAME)" "$(CURDIR)/buildroot/board/$(TARGET)/VERSIONS"
++	test -f build/LICENSE.html && cp build/LICENSE.html buildroot/board/$(TARGET)/msd/LICENSE.html || true
+ endif
+ 
+-	make -C buildroot BUSYBOX_CONFIG_FILE=$(CURDIR)/buildroot/board/$(TARGET)/busybox-1.25.0.config all
++	$(MAKE) -C buildroot -j $(NCORES) BUSYBOX_CONFIG_FILE=$(CURDIR)/buildroot/board/$(TARGET)/busybox-1.25.0.config all
+ 
+ .PHONY: buildroot/output/images/rootfs.cpio.gz
+ 
+@@ -145,6 +150,7 @@ build/sdk/fsbl/Release/fsbl.elf build/system_top.bit : build/system_top.xsa
+ 	rm -Rf build/sdk
+ ifeq (1, ${HAVE_VIVADO})
+ 	bash -c "source $(VIVADO_SETTINGS) && xsct scripts/create_fsbl_project.tcl"
++	bash -c "source $(VIVADO_SETTINGS) && ./overclock.sh $(OVERCLOCK_CPU_MULT) $(OVERCLOCK_DDR_MULT)"
+ else
+ 	unzip -o build/system_top.xsa system_top.bit -d build
+ endif
+@@ -177,6 +183,7 @@ build/$(TARGET).dfu: build/$(TARGET).itb
+ clean-build:
+ 	rm -f $(notdir $(wildcard build/*))
+ 	rm -rf build/*
++	rm -rf build_sdimg
+ 
+ clean:
+ 	make -C u-boot-xlnx clean
+@@ -185,6 +192,32 @@ clean:
+ 	make -C hdl clean
+ 	rm -f $(notdir $(wildcard build/*))
+ 	rm -rf build/*
++	rm -rf build_sdimg
++	
++overclock: build/sdk/fsbl/Release/fsbl.elf
++	test -n "$(OVERCLOCK_CPU_MULT)"  # Check environment veriable OVERCLOCK_CPU_MULT for overclock.
++	test -n "$(OVERCLOCK_DDR_MULT)"  # Check environment veriable OVERCLOCK_DDR_MULT for overclock.
++	bash -c "source $(VIVADO_SETTINGS) && ./overclock.sh $(OVERCLOCK_CPU_MULT) $(OVERCLOCK_DDR_MULT)"
++
++SDIMGDIR = $(CURDIR)/build_sdimg
++sdimg: build/
++	mkdir $(SDIMGDIR)
++	cp build/sdk/fsbl/Release/fsbl.elf 	$(SDIMGDIR)/fsbl.elf  
++	cp build/sdk/system_top/hw/system_top.bit 	$(SDIMGDIR)/system_top.bit
++	cp build/u-boot.elf 			$(SDIMGDIR)/u-boot.elf
++	cp $(CURDIR)/linux/arch/arm/boot/uImage	$(SDIMGDIR)/uImage
++	cp build/zynq-$(TARGET).dtb 	$(SDIMGDIR)/devicetree.dtb
++	cp build/uboot-env.txt  		$(SDIMGDIR)/uEnv.txt
++	cp build/rootfs.cpio.gz  		$(SDIMGDIR)/ramdisk.image.gz
++	mkimage -A arm -T ramdisk -C gzip -d $(SDIMGDIR)/ramdisk.image.gz $(SDIMGDIR)/uramdisk.image.gz
++	touch 	$(SDIMGDIR)/boot.bif
++	echo "img : {[bootloader] $(SDIMGDIR)/fsbl.elf  $(SDIMGDIR)/system_top.bit  $(SDIMGDIR)/u-boot.elf}" >  $(SDIMGDIR)/boot.bif
++	bash -c "source $(VIVADO_SETTINGS) && bootgen -image $(SDIMGDIR)/boot.bif -o i $(SDIMGDIR)/BOOT.bin"
++#	rm $(SDIMGDIR)/fsbl.elf
++#	rm $(SDIMGDIR)/system_top.bit
++#	rm $(SDIMGDIR)/u-boot.elf
++#	rm $(SDIMGDIR)/ramdisk.image.gz 
++#	rm $(SDIMGDIR)/boot.bif
+ 
+ zip-all: $(TARGETS)
+ 	zip -j build/$(ZIP_ARCHIVE_PREFIX)-fw-$(VERSION).zip $^
+diff --git a/download_and_test.sh b/download_and_test.sh
+index 4cd279c..ed3f80f 100755
+--- a/download_and_test.sh
++++ b/download_and_test.sh
+@@ -1,11 +1,11 @@
+ #~/bin/sh
+-# This resets a connected pluto, loads firmware into ram, and boots it
++# This resets a connected pluto (libre clone), loads firmware into ram, and boots it
+ #
+ 
+ #default IP address
+ ipaddr=192.168.2.1
+ 
+-if [ ! -f ./build/pluto.dfu ] ; then
++if [ ! -f ./build/libre.dfu ] ; then
+     echo no file to upload
+     exit
+ fi
+@@ -32,4 +32,4 @@ do
+ done
+ 
+ # -R resets/terminates the dfu after we are done
+-sudo dfu-util -R -d 0456:b673,0456:b674 -D ./build/pluto.dfu -a firmware.dfu
++sudo dfu-util -R -d 0456:b673,0456:b674 -D ./build/libre.dfu -a firmware.dfu

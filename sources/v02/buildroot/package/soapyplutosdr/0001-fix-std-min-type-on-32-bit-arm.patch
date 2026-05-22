@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@local>
+Date: Wed, 20 May 2026 10:56:00 +0000
+Subject: [PATCH] Fix std::min type mismatch on 32-bit ARM
+
+On 32-bit ARM, size_t is unsigned int while timestamp_diff is uint64_t.
+std::min cannot deduce a common template type from those two arguments.
+Use uint64_t for the comparison and cast back to size_t; the second
+argument bounds the result to a size_t-sized value.
+---
+ PlutoSDR_TXStreamerIPGadget.cpp  | 2 +-
+ PlutoSDR_TXStreamerUSBGadget.cpp | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/PlutoSDR_TXStreamerIPGadget.cpp b/PlutoSDR_TXStreamerIPGadget.cpp
+--- a/PlutoSDR_TXStreamerIPGadget.cpp
++++ b/PlutoSDR_TXStreamerIPGadget.cpp
+@@ -126,7 +126,7 @@ int tx_streamer_ip_gadget::send(const void * const *buffs,
+ 
+ 		// Calculate how many samples to add to buffer
+ 		// No need to reset samples as buffer is zero initialized when created
+-		size_t samples_to_fill = std::min(timestamp_diff, curr_buffer_free_samples);
++		size_t samples_to_fill = static_cast<size_t>(std::min<uint64_t>(timestamp_diff, curr_buffer_free_samples));
+ 
+ 		// Increment sample count
+ 		curr_buffer_samples_stored += samples_to_fill;
+diff --git a/PlutoSDR_TXStreamerUSBGadget.cpp b/PlutoSDR_TXStreamerUSBGadget.cpp
+--- a/PlutoSDR_TXStreamerUSBGadget.cpp
++++ b/PlutoSDR_TXStreamerUSBGadget.cpp
+@@ -134,7 +134,7 @@ int tx_streamer_usb_gadget::send(const void * const *buffs,
+ 
+ 		// Calculate how many samples to add to buffer
+ 		// No need to reset samples as buffer is zero initialized when created
+-		size_t samples_to_fill = std::min(timestamp_diff, curr_buffer_free_samples);
++		size_t samples_to_fill = static_cast<size_t>(std::min<uint64_t>(timestamp_diff, curr_buffer_free_samples));
+ 
+ 		// Increment sample count
+ 		curr_buffer_samples_stored += samples_to_fill;

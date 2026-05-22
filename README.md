@@ -18,6 +18,7 @@ This repository contains a tested SD-card image payload and SPI update artifacts
 - `firmware/libre.frm` - SPI firmware/FIT update image
 - `firmware/boot.frm` - SPI bootloader/environment update image
 - `firmware/libre.itb` - FIT image containing FPGA, kernel, device tree, and ramdisk
+- `sources/v02/` - source overlay and patches used for the v02 firmware build
 
 Recommended recovery path: test via SD card first. The SD card is mounted automatically at `/mnt/storage`, where additional binaries such as `bluestation-bs` or `flowstation-bs` can be placed.
 

@@ -1,0 +1,16 @@
+config BR2_PACKAGE_SOAPYPLUTOSDR
+	bool "soapyplutosdr timestamp"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	select BR2_PACKAGE_LIBAD9361_IIO
+	select BR2_PACKAGE_LIBIIO_NETWORK_BACKEND
+	select BR2_PACKAGE_LIBUSB
+	select BR2_PACKAGE_SOAPYSDR
+	help
+	  SoapySDR module for ADALM-Pluto/Pluto+ direct streaming.
+	  This build uses pgreenland's sdr_gadget_timestamping branch,
+	  which adds the timestamp_every stream argument required by
+	  tetra-bluestation.
+
+comment "soapyplutosdr needs a toolchain with C++ and threads"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS

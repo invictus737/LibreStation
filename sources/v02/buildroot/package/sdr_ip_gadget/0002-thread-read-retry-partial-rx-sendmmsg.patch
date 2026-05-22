@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: LibreSDR Timestamp Build <root@localhost>
+Date: Fri, 22 May 2026 01:00:00 +0300
+Subject: [PATCH] thread_read: retry partial RX sendmmsg batches
+
+Non-blocking UDP sendmmsg can accept only a prefix of a multi-message
+batch. Dropping the unsent tail silently creates host-visible timestamp
+gaps even when FPGA/IIO timestamps are continuous.
+---
+ thread_read.c | 36 +++++++++++++++++++++++++++++-------
+ 1 file changed, 29 insertions(+), 7 deletions(-)
+
+diff --git a/thread_read.c b/thread_read.c
+--- a/thread_read.c
++++ b/thread_read.c
+@@ -425,17 +425,39 @@ static int handle_iio_buffer(state_t *state)
+ 		buffer += state->packet_payload_size;
+ 	}
+ 
+-	/* Send all datagrams with single system call :-) */
+-	if (state->packets_per_buffer != sendmmsg(state->thread_args->output_fd,
+-											  state->arr_mmsg_hdrs,
+-											  state->packets_per_buffer,
+-											  0))
++	/* Send all datagrams. Non-blocking UDP can accept only a prefix; do not
++	 * silently drop the tail of a timestamped IIO buffer.
++	 */
++	size_t packets_sent = 0;
++	unsigned int retries = 0;
++	while (packets_sent < state->packets_per_buffer)
+ 	{
+-		/* Send failed */
++		int sent = sendmmsg(state->thread_args->output_fd,
++							&state->arr_mmsg_hdrs[packets_sent],
++							state->packets_per_buffer - packets_sent,
++							0);
++		if (sent > 0)
++		{
++			packets_sent += (size_t)sent;
++			retries = 0;
++			continue;
++		}
++
++		if (sent < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) && retries++ < 1000)
++		{
++			struct timespec retry_delay = { .tv_sec = 0, .tv_nsec = 100000 };
++			nanosleep(&retry_delay, NULL);
++			continue;
++		}
++
++		fprintf(stderr, "RX sendmmsg failed after %zu/%zu packets: %s\n",
++				packets_sent,
++				state->packets_per_buffer,
++				(sent < 0) ? strerror(errno) : "short send");
+ 		#if GENERATE_STATS
+-		/* Count overflow */
+ 		state->overflows++;
+ 		#endif
++		return -1;
+ 	}
+ 
+ 	/* Advance sequence number */
+-- 
+2.39.5

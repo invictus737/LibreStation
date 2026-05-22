@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: LibreSDR Timestamp Build <root@localhost>
+Date: Thu, 21 May 2026 12:00:00 +0300
+Subject: [PATCH] thread_read: fix final RX datagram payload length
+
+The datagram header is already carried in iov[0]. The last payload iov
+must contain only payload bytes. Adding sizeof(data_ip_hdr_t) again makes
+the final datagram overrun the IIO buffer payload and can corrupt the
+timestamp/sequence stream seen by direct IP clients.
+---
+ thread_read.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/thread_read.c b/thread_read.c
+--- a/thread_read.c
++++ b/thread_read.c
+@@ -274,7 +274,9 @@ void *thread_read(void *args)
+ 			/* Last packet, work out how many bytes of the payload it will contain */
+ 			size_t iio_buffer_size_exc_timestamp = state.iio_buffer_size;
+ 			if (state.thread_args->timestamping_enabled) iio_buffer_size_exc_timestamp -= sizeof(uint64_t);
+-			state.arr_iovs[(2 * i) + 1].iov_len = sizeof(data_ip_hdr_t) + (iio_buffer_size_exc_timestamp % state.packet_payload_size);
++			size_t last_payload_size = iio_buffer_size_exc_timestamp % state.packet_payload_size;
++			if (last_payload_size == 0) last_payload_size = state.packet_payload_size;
++			state.arr_iovs[(2 * i) + 1].iov_len = last_payload_size;
+ 		}
+ 
+ 		/* Prepare packet headers, just need to fill in the sequence number at transmission time */
+-- 
+2.39.5

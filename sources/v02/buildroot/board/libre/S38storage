@@ -1,0 +1,21 @@
+#!/bin/sh
+
+is_mounted() {
+  grep -qs " /mnt/storage " /proc/mounts
+}
+
+case "$1" in
+  start|"")
+    mkdir -p /mnt/storage
+    if [ -b /dev/mmcblk0p1 ] && ! is_mounted; then
+      mount -t ext4 -o rw,noatime /dev/mmcblk0p1 /mnt/storage 2>/dev/null || mount -t vfat -o rw /dev/mmcblk0p1 /mnt/storage 2>/dev/null || true
+    fi
+    ;;
+  stop)
+    is_mounted && umount /mnt/storage || true
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}" >&2
+    exit 1
+    ;;
+esac

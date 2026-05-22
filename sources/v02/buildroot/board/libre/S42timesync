@@ -1,0 +1,33 @@
+#!/bin/sh
+
+BUILD_EPOCH_FILE=/etc/build_epoch
+
+set_build_time_floor() {
+    [ -r "$BUILD_EPOCH_FILE" ] || return 0
+    build_epoch=$(cat "$BUILD_EPOCH_FILE" 2>/dev/null || echo 0)
+    now_epoch=$(date +%s 2>/dev/null || echo 0)
+    if [ "$now_epoch" -lt "$build_epoch" ]; then
+        date -u -s "@$build_epoch" >/dev/null 2>&1 || true
+    fi
+}
+
+sync_network_time() {
+    for server in pool.ntp.org time.google.com time.cloudflare.com; do
+        ntpd -n -q -p "$server" >/dev/null 2>&1 && return 0
+    done
+    return 1
+}
+
+case "$1" in
+  start|"")
+    echo -n "Starting time sync: "
+    set_build_time_floor
+    if sync_network_time; then echo "OK"; else echo "build-time fallback"; fi
+    ;;
+  stop)
+    ;;
+  *)
+    echo "Usage: $0 {start|stop}" >&2
+    exit 1
+    ;;
+esac

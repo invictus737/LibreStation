@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: LibreStation Timestamp Build <root@localhost>
+Date: Thu, 21 May 2026 15:40:00 +0300
+Subject: [PATCH] ip-gadget: fix TX last packet payload length
+
+The IP gadget TX streamer builds each UDP datagram from two iovecs:
+one for the data_ip_hdr_t header and one for payload. The payload iovec
+must contain only payload bytes. The last packet path accidentally added
+the header size again, sending extra bytes at the end of non-aligned TX
+buffers.
+---
+ PlutoSDR_TXStreamerIPGadget.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/PlutoSDR_TXStreamerIPGadget.cpp b/PlutoSDR_TXStreamerIPGadget.cpp
+--- a/PlutoSDR_TXStreamerIPGadget.cpp
++++ b/PlutoSDR_TXStreamerIPGadget.cpp
+@@ -391,7 +391,9 @@ void tx_streamer_ip_gadget::thread_func(uint32_t curr_enabled_channels, uint32_t
+ 		{
+ 			/* Last packet, work out how many bytes of the payload it will contain */
+ 			size_t iio_buffer_size = buffer_size_samples * sample_size_bytes;
+-			arr_iovs[(2 * i) + 1].iov_len = sizeof(data_ip_hdr_t) + (iio_buffer_size % udp_payload_size);
++			size_t last_payload_size = iio_buffer_size % udp_payload_size;
++			if (last_payload_size == 0) last_payload_size = udp_payload_size;
++			arr_iovs[(2 * i) + 1].iov_len = last_payload_size;
+ 		}
+ 
+ 		/* Prepare packet headers, just need to fill in the sequence number at transmission time */
+-- 
+2.39.5
