@@ -19,7 +19,7 @@ module util_wr_sync_mux(
 
     // Calculate when timestamping is enabled
     wire timestamp_en;
-    assign timestamp_en = (timestamp_every != 0);
+    assign timestamp_en = (timestamp_every[27:0] != 0);
 
     wire timestamp_en_synced;
 

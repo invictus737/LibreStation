@@ -28,6 +28,7 @@ proc libre_insert_timestamp_blocks {} {
     cpack
     tx_upack
     rx_fir_decimator
+    interp_slice
   } {
     if {[llength [get_bd_cells -quiet $cell]] == 0} {
       error "Required BD cell not found: $cell"
@@ -50,9 +51,12 @@ proc libre_insert_timestamp_blocks {} {
     set_property CONFIG.SYNC_TRANSFER_START true [get_bd_cells axi_ad9361_adc_dma]
   }
 
-  ad_ip_instance c_counter_binary counter_timestamp
-  ad_ip_parameter counter_timestamp CONFIG.Output_Width 64
-  ad_ip_parameter counter_timestamp CONFIG.CE true
+  ad_ip_instance util_timestamp_timekeeper timestamp_timekeeper
+  ad_ip_parameter timestamp_timekeeper CONFIG.TX_INTERP_FACTOR 8
+
+  ad_ip_instance util_vector_logic timestamp_tx_raw_tick_or [list \
+    C_OPERATION {or} \
+    C_SIZE 1]
 
   ad_ip_instance util_cpack2_timestamp cpack_timestamp
   ad_ip_instance util_upack2_timestamp upack_timestamp
@@ -107,10 +111,15 @@ proc libre_insert_timestamp_blocks {} {
     C_OPERATION {or} \
     C_SIZE 1]
 
-  ad_connect axi_ad9361/l_clk counter_timestamp/CLK
-  ad_connect rx_fir_decimator/valid_out_0 counter_timestamp/CE
-  ad_connect counter_timestamp/Q cpack_timestamp/timestamp
-  ad_connect counter_timestamp/Q upack_timestamp/timestamp
+  ad_connect axi_ad9361/l_clk timestamp_timekeeper/clk
+  ad_connect axi_ad9361/rst timestamp_timekeeper/reset
+  ad_connect rx_fir_decimator/valid_out_0 timestamp_timekeeper/rx_sample_tick
+  ad_connect axi_ad9361/dac_valid_i0 timestamp_tx_raw_tick_or/Op1
+  ad_connect axi_ad9361/dac_valid_i1 timestamp_tx_raw_tick_or/Op2
+  ad_connect timestamp_tx_raw_tick_or/Res timestamp_timekeeper/tx_raw_sample_tick
+  ad_connect interp_slice/Dout timestamp_timekeeper/tx_interpolation_active
+  ad_connect timestamp_timekeeper/timestamp cpack_timestamp/timestamp
+  ad_connect timestamp_timekeeper/timestamp upack_timestamp/timestamp
 
   ad_connect axi_ad9361/up_adc_gpio_out cpack_timestamp_every_slice/Din
   ad_connect cpack_timestamp_every_slice/Dout cpack_timestamp_every_concat/In0
